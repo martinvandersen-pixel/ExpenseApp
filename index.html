@@ -6,6 +6,7 @@
 <title>Expense Reimbursement 报销费用申请</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
     --ink:#1f2a37;
@@ -762,13 +763,18 @@ async function generateOutputs(){
 
     setStatus('Building Excel file...');
     const excelOut = XLSX.write(wb, { type:'array', bookType:'xlsx', cellStyles:true });
-    const excelBlob = new Blob([excelOut], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    downloadBlob(excelBlob, 'Expense_Claim_filled.xlsx');
 
     setStatus('Building combined printable PDF...');
-    await buildCombinedPDF(lines, cashAdvance);
+    const pdfBytes = await buildCombinedPDF(lines, cashAdvance);
 
-    setStatus('Done — files downloaded. Resetting form for the next claim...', 'ok');
+    setStatus('Packaging files...');
+    const zip = new JSZip();
+    zip.file('Expense_Claim_filled.xlsx', excelOut);
+    zip.file('Expense_Claim_with_invoices.pdf', pdfBytes);
+    const zipBlob = await zip.generateAsync({ type:'blob' });
+    downloadBlob(zipBlob, 'Expense_Claim.zip');
+
+    setStatus('Done — Expense_Claim.zip downloaded (contains the Excel form and printable PDF). Resetting form for the next claim...', 'ok');
     setTimeout(()=>{
       resetEverything();
       setStatus('Ready for the next claim.', 'ok');
@@ -863,17 +869,16 @@ async function buildCombinedPDF(lines, cashAdvance){
   for (const item of invoices){
     try {
       const arrBuf = await item.file.arrayBuffer();
-      const invDoc = await PDFDocument.load(arrBuf);
+      const invDoc = await PDFDocument.load(arrBuf, { ignoreEncryption: true });
       const pages = await pdfDoc.copyPages(invDoc, invDoc.getPageIndices());
       pages.forEach(p=>pdfDoc.addPage(p));
     } catch(e){
       console.warn('Could not append', item.name, e);
+      drawLine('[Could not attach invoice: ' + toAscii(item.name) + ']', { size:9, gap:14 });
     }
   }
 
-  const pdfBytes = await pdfDoc.save();
-  const blob = new Blob([pdfBytes], { type:'application/pdf' });
-  downloadBlob(blob, 'Expense_Claim_with_invoices.pdf');
+  return await pdfDoc.save();
 }
 
 function downloadBlob(blob, filename){
