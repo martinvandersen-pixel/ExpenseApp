@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expense Reimbursement 报销费用申请</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root{
+    --ink:#1f2a37;
+    --paper:#fafaf7;
+    --line:#d8d6cf;
+    --accent:#9b3b2c;
+    --accent-soft:#f4e7e2;
+    --muted:#6b7280;
+    --ok:#2f6f4f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    line-height:1.5;
+  }
+  header{
+    border-bottom:2px solid var(--ink);
+    padding:24px 20px 18px;
+    background:var(--paper);
+  }
+  header h1{
+    margin:0;
+    font-size:22px;
+    font-weight:700;
+    letter-spacing:0.01em;
+  }
+  header .sub{
+    font-size:13px;
+    color:var(--muted);
+    margin-top:4px;
+  }
+  main{
+    max-width:760px;
+    margin:0 auto;
+    padding:20px 16px 80px;
+  }
+  .card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:18px;
+    margin-bottom:18px;
+  }
+  .card h2{
+    font-size:15px;
+    margin:0 0 14px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--accent);
+    border-bottom:1px solid var(--accent-soft);
+    padding-bottom:8px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .card h2 .lang-tag{
+    font-size:11px;
+    color:var(--muted);
+    font-weight:400;
+    text-transform:none;
+    letter-spacing:0;
+  }
+  label{
+    display:block;
+    font-size:12px;
+    font-weight:600;
+    margin-bottom:4px;
+    color:var(--muted);
+  }
+  input[type=text], input[type=date], input[type=number], select, textarea{
+    width:100%;
+    padding:9px 10px;
+    border:1px solid var(--line);
+    border-radius:4px;
+    font-size:14px;
+    font-family:inherit;
+    background:#fff;
+    color:var(--ink);
+  }
+  input:focus, select:focus, textarea:focus{
+    outline:2px solid var(--accent);
+    outline-offset:1px;
+    border-color:var(--accent);
+  }
+  .row{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    margin-bottom:12px;
+  }
+  .row.three{grid-template-columns:1fr 1fr 1fr;}
+  @media (max-width:560px){
+    .row, .row.three{grid-template-columns:1fr;}
+  }
+  .field{margin-bottom:12px;}
+  .line-item{
+    border:1px solid var(--line);
+    border-radius:5px;
+    padding:12px;
+    margin-bottom:10px;
+    position:relative;
+    background:#fdfdfb;
+  }
+  .line-item .badge{
+    position:absolute;
+    top:-10px; left:10px;
+    background:var(--accent);
+    color:#fff;
+    font-size:11px;
+    font-weight:700;
+    padding:2px 8px;
+    border-radius:3px;
+    letter-spacing:0.05em;
+  }
+  .line-item .remove{
+    position:absolute;
+    top:8px; right:8px;
+    background:none;
+    border:none;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:13px;
+    text-decoration:underline;
+  }
+  .upload-zone{
+    border:2px dashed var(--line);
+    border-radius:6px;
+    padding:24px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s;
+  }
+  .upload-zone:hover, .upload-zone.drag{
+    border-color:var(--accent);
+    background:var(--accent-soft);
+  }
+  .upload-zone input{display:none;}
+  .upload-zone .hint{
+    font-size:12px;
+    color:var(--muted);
+    margin-top:6px;
+  }
+  .invoice-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:8px 10px;
+    border:1px solid var(--line);
+    border-radius:4px;
+    margin-top:8px;
+    font-size:13px;
+    background:#fff;
+  }
+  .invoice-item .status{
+    font-size:11px;
+    padding:2px 8px;
+    border-radius:3px;
+    font-weight:600;
+  }
+  .status.pending{background:#f1f1ee; color:var(--muted);}
+  .status.done{background:#e3f1e9; color:var(--ok);}
+  .status.error{background:#fbe9e7; color:var(--accent);}
+  .invoice-item .remove{
+    background:none; border:none; color:var(--muted); cursor:pointer; font-size:13px; text-decoration:underline; margin-left:10px;
+  }
+  button.primary{
+    width:100%;
+    padding:13px;
+    background:var(--ink);
+    color:#fff;
+    border:none;
+    border-radius:5px;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+    letter-spacing:0.02em;
+  }
+  button.primary:hover{background:#0e1722;}
+  button.primary:disabled{background:#b6bcc4; cursor:not-allowed;}
+  button.danger{
+    width:100%;
+    padding:11px;
+    background:#fff;
+    color:var(--accent);
+    border:1px solid var(--accent);
+    border-radius:5px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    margin-top:8px;
+  }
+  button.danger:hover{background:var(--accent-soft);}
+  .addline{
+    background:none;
+    border:1px dashed var(--line);
+    border-radius:5px;
+    color:var(--accent);
+    font-weight:600;
+    font-size:13px;
+    padding:9px;
+    width:100%;
+    cursor:pointer;
+    margin-top:4px;
+  }
+  .addline:hover{border-color:var(--accent); background:var(--accent-soft);}
+  .addline:disabled{opacity:.4; cursor:not-allowed;}
+  .total-line{
+    display:flex;
+    justify-content:space-between;
+    font-size:14px;
+    font-weight:700;
+    padding-top:10px;
+    border-top:1px solid var(--line);
+    margin-top:6px;
+  }
+  .note{
+    font-size:12px;
+    color:var(--muted);
+    margin-top:6px;
+  }
+  .key-row{
+    display:flex;
+    gap:8px;
+    align-items:center;
+  }
+  .key-row input{flex:1;}
+  .key-row button{
+    padding:9px 12px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:4px;
+    font-size:12px;
+    cursor:pointer;
+  }
+  #status{
+    font-size:13px;
+    margin-top:10px;
+    min-height:18px;
+    color:var(--muted);
+  }
+  #status.ok{color:var(--ok);}
+  #status.err{color:var(--accent);}
+  .confirm-box{
+    border:1px solid var(--accent);
+    background:var(--accent-soft);
+    border-radius:6px;
+    padding:12px;
+    margin-top:10px;
+    font-size:13px;
+  }
+  .confirm-box button{
+    margin-top:8px;
+    margin-right:8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Expense Reimbursement 报销费用申请</h1>
+  <div class="sub">Add expenses any time — they're saved in this browser. When ready, generate the claim form + combined invoice PDF for printing, then start fresh.</div>
+</header>
+
+<main>
+
+  <div class="card">
+    <h2>Claude API Key <span class="lang-tag">用于发票识别</span></h2>
+    <div class="key-row">
+      <input type="text" id="apiKey" placeholder="sk-ant-..." autocomplete="off">
+      <button id="saveKeyBtn" type="button">Remember on this device</button>
+    </div>
+    <div class="note">Stored only in this browser (localStorage). Required only for automatic invoice reading; you can skip this and fill fields manually.</div>
+  </div>
+
+  <div class="card">
+    <h2>Claimant details <span class="lang-tag">基本信息</span></h2>
+    <div class="row">
+      <div class="field">
+        <label for="date">Date 日期</label>
+        <input type="date" id="date">
+      </div>
+      <div class="field">
+        <label for="department">Department 部门</label>
+        <select id="department">
+          <option>G&A</option>
+          <option>Logistics</option>
+          <option>IT</option>
+          <option>Purchase</option>
+          <option>Finance</option>
+          <option>R&D</option>
+          <option>Production</option>
+          <option>Quality</option>
+          <option>Employee committee</option>
+          <option>Sales</option>
+          <option>CS</option>
+          <option>Engineering</option>
+          <option>LINAK Profiles Asia</option>
+          <option>Production-Machining</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="applicant">Name of Applicant 申请人</label>
+      <input type="text" id="applicant" placeholder="Your name">
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="cashAdvance">Cash in advance (if any) 借款金额</label>
+        <input type="number" step="0.01" id="cashAdvance" value="0">
+      </div>
+      <div class="field">
+        <label for="paymentType">Payment type 付款方式</label>
+        <select id="paymentType">
+          <option>Bank check</option>
+          <option>Cash</option>
+          <option selected>Transfer</option>
+          <option>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="expectedDate">Expected payment date 期望付款日期</label>
+        <input type="date" id="expectedDate">
+      </div>
+      <div class="field">
+        <label for="remarks">Remarks 备注</label>
+        <input type="text" id="remarks" placeholder="Optional notes">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Invoices / receipts <span class="lang-tag">发票（可选，自动识别）</span></h2>
+    <div class="upload-zone" id="dropZone">
+      <strong>Drop invoice PDFs here or click to upload</strong>
+      <div class="hint">Each invoice can auto-add an expense line below (requires API key) and will be printed together with the claim form.</div>
+      <input type="file" id="fileInput" accept="application/pdf" multiple>
+    </div>
+    <div id="invoiceList"></div>
+  </div>
+
+  <div class="card">
+    <h2>Expenses <span class="lang-tag" id="lineCountLabel">最多6项</span></h2>
+    <div id="lineItems"></div>
+    <button class="addline" id="addLineBtn" type="button">+ Add expense</button>
+    <div class="total-line">
+      <span>Total 合计</span>
+      <span id="totalDisplay">0.00 CNY</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Generate claim for printing <span class="lang-tag">生成报销单</span></h2>
+    <div class="note">This downloads the filled Excel form and a combined PDF (summary page + all attached invoices), ready to print. After downloading, the form and expense list are cleared so you can start the next claim.</div>
+    <button class="primary" id="generateBtn" type="button">Generate Excel + Printable PDF</button>
+    <button class="danger" id="clearBtn" type="button">Clear everything without generating</button>
+    <div id="status"></div>
+    <div id="confirmBox" class="confirm-box" style="display:none;">
+      Generating will reset all expenses and invoices in this browser. Continue?
+      <div>
+        <button class="primary" id="confirmYes" type="button" style="width:auto; display:inline-block; padding:8px 16px;">Yes, generate &amp; reset</button>
+        <button class="danger" id="confirmNo" type="button" style="width:auto; display:inline-block; padding:8px 16px; margin-top:0;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const EXPENSE_TYPES = [
+  'Entertainment 招待费',
+  'Travelling Cost 交通差旅费',
+  'Running Cost Vehicle车辆费用',
+  'Telephone—Internet Cost    电话网络费',
+  'Office Supplies办公用品',
+  'Courier/Freight速递运费',
+  'Customs 清关检验检疫',
+  'Enployee allowance员工福利费',
+  'Test cost测试费',
+  'Sample cost样品费',
+  'Tools 工具',
+  'Rent 租金',
+  'Training cost培训费',
+  'Exhibition&AD展览广告',
+  'Reserch&develop 研发费用',
+  'Other Various Expense 其他费用'
+];
+const PAYMENT_TYPES = ['Bank check','Cash','Transfer','Other'];
+const MAX_LINES = 6;
+const STORAGE_KEY = 'expenseClaimDraft_v1';
+
+let invoices = []; // {file, name, status, extracted, id}
+
+// ---- Persistence ----
+function saveDraft(){
+  const draft = {
+    date: document.getElementById('date').value,
+    department: document.getElementById('department').value,
+    applicant: document.getElementById('applicant').value,
+    cashAdvance: document.getElementById('cashAdvance').value,
+    paymentType: document.getElementById('paymentType').value,
+    expectedDate: document.getElementById('expectedDate').value,
+    remarks: document.getElementById('remarks').value,
+    lines: getLineData()
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+}
+
+function loadDraft(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch(e){ return null; }
+}
+
+function clearDraft(){
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+function todayISO(){
+  return new Date().toISOString().slice(0,10);
+}
+
+// ---- API key ----
+const apiKeyInput = document.getElementById('apiKey');
+const storedKey = localStorage.getItem('claudeApiKey');
+if (storedKey) apiKeyInput.value = storedKey;
+document.getElementById('saveKeyBtn').addEventListener('click', () => {
+  localStorage.setItem('claudeApiKey', apiKeyInput.value.trim());
+  setStatus('API key saved on this device.', 'ok');
+});
+
+// ---- Line items ----
+const lineItemsDiv = document.getElementById('lineItems');
+
+function addLineItem(prefill, opts){
+  const items = lineItemsDiv.querySelectorAll('.line-item');
+  if (items.length >= MAX_LINES) {
+    setStatus(`Maximum ${MAX_LINES} expense lines (template limit).`, 'err');
+    return;
+  }
+  const idx = items.length + 1;
+  const div = document.createElement('div');
+  div.className = 'line-item';
+  div.innerHTML = `
+    <div class="badge">EXPENSE ${idx}</div>
+    <button class="remove" type="button">remove</button>
+    <div class="field" style="margin-top:10px;">
+      <label>Description 报销费用说明</label>
+      <input type="text" class="li-desc" value="${escapeAttr(prefill && prefill.desc || '')}">
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Expense Type 费用类别</label>
+        <select class="li-type">
+          ${EXPENSE_TYPES.map(t=>`<option value="${escapeAttr(t)}" ${prefill && prefill.type===t?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Usage 用途</label>
+        <input type="text" class="li-usage" value="${escapeAttr(prefill && prefill.usage || '')}">
+      </div>
+    </div>
+    <div class="field">
+      <label>Amount (CNY) 金额</label>
+      <input type="number" step="0.01" class="li-amount" value="${prefill && prefill.amount != null ? prefill.amount : ''}">
+    </div>
+  `;
+  div.querySelector('.remove').addEventListener('click', ()=>{
+    div.remove();
+    renumberLines();
+    updateTotal();
+    saveDraft();
+  });
+  lineItemsDiv.appendChild(div);
+  updateAddButtonState();
+  if (!(opts && opts.skipSave)) { updateTotal(); saveDraft(); }
+}
+
+function renumberLines(){
+  lineItemsDiv.querySelectorAll('.line-item').forEach((el,i)=>{
+    el.querySelector('.badge').textContent = 'EXPENSE ' + (i+1);
+  });
+  updateAddButtonState();
+}
+
+function updateAddButtonState(){
+  const count = lineItemsDiv.querySelectorAll('.line-item').length;
+  const btn = document.getElementById('addLineBtn');
+  btn.disabled = count >= MAX_LINES;
+  btn.textContent = count >= MAX_LINES ? `Maximum ${MAX_LINES} expenses reached` : '+ Add expense';
+  document.getElementById('lineCountLabel').textContent = `${count} / ${MAX_LINES}`;
+}
+
+function updateTotal(){
+  let total = 0;
+  document.querySelectorAll('.li-amount').forEach(inp=>{
+    const v = parseFloat(inp.value);
+    if(!isNaN(v)) total += v;
+  });
+  document.getElementById('totalDisplay').textContent = total.toFixed(2) + ' CNY';
+}
+
+function getLineData(){
+  return Array.from(lineItemsDiv.querySelectorAll('.line-item')).map(el=>({
+    desc: el.querySelector('.li-desc').value,
+    type: el.querySelector('.li-type').value,
+    usage: el.querySelector('.li-usage').value,
+    amount: el.querySelector('.li-amount').value
+  }));
+}
+
+function escapeAttr(s){
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+document.getElementById('addLineBtn').addEventListener('click', ()=>addLineItem());
+
+// live-save on any input change
+lineItemsDiv.addEventListener('input', ()=>{ updateTotal(); saveDraft(); });
+['date','department','applicant','cashAdvance','paymentType','expectedDate','remarks'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', saveDraft);
+  document.getElementById(id).addEventListener('change', saveDraft);
+});
+
+// ---- Load saved draft on startup ----
+(function init(){
+  const draft = loadDraft();
+  if (draft){
+    document.getElementById('date').value = draft.date || todayISO();
+    document.getElementById('department').value = draft.department || 'G&A';
+    document.getElementById('applicant').value = draft.applicant || '';
+    document.getElementById('cashAdvance').value = draft.cashAdvance || 0;
+    document.getElementById('paymentType').value = draft.paymentType || 'Transfer';
+    document.getElementById('expectedDate').value = draft.expectedDate || '';
+    document.getElementById('remarks').value = draft.remarks || '';
+    if (draft.lines && draft.lines.length){
+      draft.lines.forEach(l=>addLineItem(l, {skipSave:true}));
+    } else {
+      addLineItem(null, {skipSave:true});
+    }
+  } else {
+    document.getElementById('date').value = todayISO();
+    addLineItem(null, {skipSave:true});
+  }
+  updateTotal();
+  updateAddButtonState();
+})();
+
+// ---- Invoice upload ----
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const invoiceList = document.getElementById('invoiceList');
+
+dropZone.addEventListener('click', ()=>fileInput.click());
+dropZone.addEventListener('dragover', e=>{e.preventDefault(); dropZone.classList.add('drag');});
+dropZone.addEventListener('dragleave', ()=>dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e=>{
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e=>handleFiles(e.target.files));
+
+function handleFiles(files){
+  for (const file of files){
+    if (file.type !== 'application/pdf') continue;
+    const item = { file, name: file.name, status: 'pending', id: crypto.randomUUID() };
+    invoices.push(item);
+    renderInvoices();
+    processInvoice(item);
+  }
+}
+
+function renderInvoices(){
+  invoiceList.innerHTML = '';
+  invoices.forEach(item=>{
+    const div = document.createElement('div');
+    div.className = 'invoice-item';
+    div.innerHTML = `
+      <span>${item.name}</span>
+      <span>
+        <span class="status ${item.status}">${item.status}</span>
+        <button class="remove" type="button" data-id="${item.id}">remove</button>
+      </span>
+    `;
+    div.querySelector('.remove').addEventListener('click', ()=>{
+      invoices = invoices.filter(i=>i.id!==item.id);
+      renderInvoices();
+    });
+    invoiceList.appendChild(div);
+  });
+}
+
+async function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+async function processInvoice(item){
+  const apiKey = localStorage.getItem('claudeApiKey') || apiKeyInput.value.trim();
+  if (!apiKey){
+    item.status = 'pending';
+    renderInvoices();
+    return;
+  }
+  try {
+    const base64 = await fileToBase64(item.file);
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages:[{
+          role:'user',
+          content:[
+            { type:'document', source:{ type:'base64', media_type:'application/pdf', data: base64 } },
+            { type:'text', text:`This is a Chinese invoice (发票) or receipt. Extract the following fields and respond ONLY with raw JSON (no markdown, no preamble):
+{
+  "description": "a short English description of what was purchased, based on the 项目名称 line items or receipt content",
+  "expense_type": "best match from this list, exact text: ${JSON.stringify(EXPENSE_TYPES)}",
+  "usage": "brief note on where/when/with whom or destination/traffic type, per the expense type's guidance, in English",
+  "amount": <the total amount (价税合计, small-figure) as a plain number, no currency symbol>,
+  "date": "the invoice/receipt date (开票日期) as YYYY-MM-DD"
+}` }
+          ]
+        }]
+      })
+    });
+    if (!resp.ok){
+      const errText = await resp.text();
+      throw new Error('API error ' + resp.status + ': ' + errText.slice(0,200));
+    }
+    const data = await resp.json();
+    const textBlock = data.content.find(b=>b.type==='text');
+    let parsed;
+    try {
+      const clean = textBlock.text.replace(/```json|```/g,'').trim();
+      parsed = JSON.parse(clean);
+    } catch(e){
+      throw new Error('Could not parse model response');
+    }
+    item.extracted = parsed;
+    item.status = 'done';
+    renderInvoices();
+
+    addLineItem({
+      desc: parsed.description || '',
+      type: EXPENSE_TYPES.includes(parsed.expense_type) ? parsed.expense_type : EXPENSE_TYPES[0],
+      usage: parsed.usage || '',
+      amount: parsed.amount || ''
+    });
+    // fill form-level expected date if not already set
+    const expDateInput = document.getElementById('expectedDate');
+    if (!expDateInput.value && parsed.date){
+      expDateInput.value = parsed.date;
+      saveDraft();
+    }
+    setStatus(`Added expense from ${item.name}`, 'ok');
+  } catch (err){
+    item.status = 'error';
+    renderInvoices();
+    setStatus(`Failed to read ${item.name}: ${err.message}`, 'err');
+  }
+}
+
+function setStatus(msg, cls){
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = cls || '';
+}
+
+// ---- Generate Excel + PDF, then reset ----
+const confirmBox = document.getElementById('confirmBox');
+document.getElementById('generateBtn').addEventListener('click', ()=>{
+  confirmBox.style.display = 'block';
+});
+document.getElementById('confirmNo').addEventListener('click', ()=>{
+  confirmBox.style.display = 'none';
+});
+document.getElementById('confirmYes').addEventListener('click', async ()=>{
+  confirmBox.style.display = 'none';
+  await generateOutputs();
+});
+
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  if (!confirm('Clear all expenses, invoices, and form fields without generating anything?')) return;
+  resetEverything();
+  setStatus('Cleared.', 'ok');
+});
+
+async function generateOutputs(){
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  setStatus('Loading template...');
+
+  try {
+    const resp = await fetch('Payment_Form_template.xlsx');
+    if (!resp.ok) throw new Error('Template file not found');
+    const buf = await resp.arrayBuffer();
+    const wb = XLSX.read(buf, { type:'array', cellStyles:true, bookVBA:false });
+
+    const sheetName = 'Expense reimbursement';
+    const ws = wb.Sheets[sheetName];
+    if (!ws) throw new Error('Sheet "' + sheetName + '" not found in template');
+
+    // Header fields
+    setCell(ws, 'B3', 'Date 日期: ' + document.getElementById('date').value);
+    setCell(ws, 'D3', document.getElementById('department').value);
+    setCell(ws, 'H3', document.getElementById('applicant').value);
+
+    // Expense lines -> rows 5-10 (6 rows). Only B,C,D,E are per-row (unmerged).
+    const lines = getLineData();
+    lines.forEach((l, i)=>{
+      const row = 5 + i;
+      if (row > 10) return;
+      setCell(ws, 'B'+row, l.desc);
+      setCell(ws, 'C'+row, l.type);
+      setCell(ws, 'D'+row, l.usage);
+      setCell(ws, 'E'+row, parseFloat(l.amount) || 0);
+    });
+
+    // F5:F10, G5:G10, H5:H10, I5:I10 are merged across all 6 rows -> write only to the anchor cell (row 5)
+    const cashAdvance = parseFloat(document.getElementById('cashAdvance').value) || 0;
+    setCell(ws, 'F5', cashAdvance);
+    setCell(ws, 'H5', document.getElementById('paymentType').value);
+    setCell(ws, 'I5', document.getElementById('expectedDate').value);
+
+    // Fix the TOTAL formula to sum all 6 rows (5-10)
+    if (!ws['E10']) ws['E10'] = {};
+    ws['E10'].f = 'SUM(E5:E10)';
+    delete ws['E10'].v;
+
+    // Fix G5 balance formula (Cash received = Total - Cash in advance)
+    if (!ws['G5']) ws['G5'] = {};
+    ws['G5'].f = '+E10-F5';
+    delete ws['G5'].v;
+
+    // Remarks
+    setCell(ws, 'E11', 'Remarks备注: ' + (document.getElementById('remarks').value || ''));
+
+    setStatus('Building Excel file...');
+    const excelOut = XLSX.write(wb, { type:'array', bookType:'xlsx', cellStyles:true });
+    const excelBlob = new Blob([excelOut], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    downloadBlob(excelBlob, 'Expense_Claim_filled.xlsx');
+
+    setStatus('Building combined printable PDF...');
+    await buildCombinedPDF(lines, cashAdvance);
+
+    setStatus('Done — files downloaded. Resetting form for the next claim...', 'ok');
+    setTimeout(()=>{
+      resetEverything();
+      setStatus('Ready for the next claim.', 'ok');
+    }, 1200);
+  } catch (err){
+    console.error(err);
+    setStatus('Error: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function setCell(ws, addr, value){
+  if (value === undefined || value === null || value === '') {
+    if (!ws[addr]) ws[addr] = {};
+    ws[addr].v = '';
+    ws[addr].t = 's';
+    delete ws[addr].f;
+    return;
+  }
+  if (!ws[addr]) ws[addr] = {};
+  if (typeof value === 'number'){
+    ws[addr].v = value;
+    ws[addr].t = 'n';
+  } else {
+    ws[addr].v = value;
+    ws[addr].t = 's';
+  }
+  delete ws[addr].f;
+}
+
+async function buildCombinedPDF(lines, cashAdvance){
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const pdfDoc = await PDFDocument.create();
+
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  let page = pdfDoc.addPage([595.28, 841.89]); // A4
+  let y = 800;
+  const left = 50;
+  const lineHeight = 16;
+
+  const ensureSpace = (needed)=>{
+    if (y - needed < 50){
+      page = pdfDoc.addPage([595.28, 841.89]);
+      y = 800;
+    }
+  };
+
+  const drawLine = (text, opts)=>{
+    opts = opts || {};
+    ensureSpace(opts.gap || lineHeight);
+    page.drawText(text, { x: left, y, size: opts.size||11, font: opts.bold?fontBold:font, color: rgb(0.12,0.16,0.22) });
+    y -= opts.gap || lineHeight;
+  };
+
+  drawLine('Approval for Expense Reimbursement 报销费用申请', { size:16, bold:true, gap:28 });
+  drawLine('Date 日期: ' + document.getElementById('date').value);
+  drawLine('Department 部门: ' + document.getElementById('department').value);
+  drawLine('Applicant 申请人: ' + document.getElementById('applicant').value);
+  drawLine('Payment type 付款方式: ' + document.getElementById('paymentType').value + '    Expected payment date 期望付款日期: ' + document.getElementById('expectedDate').value, {gap:28});
+
+  drawLine('Expenses 费用明细:', { bold:true, gap:20 });
+  let total = 0;
+  lines.forEach((l,i)=>{
+    const amount = parseFloat(l.amount) || 0;
+    total += amount;
+    drawLine((i+1) + '. ' + l.desc + '  (' + l.type + ')', { bold:true, gap:16 });
+    drawLine('   Usage: ' + l.usage + '   Amount: ' + amount.toFixed(2) + ' CNY', { size:10, gap:20 });
+  });
+
+  y -= 6;
+  drawLine('Total 合计: ' + total.toFixed(2) + ' CNY', { bold:true, size:13, gap:20 });
+  drawLine('Cash in advance 借款金额: ' + cashAdvance.toFixed(2) + ' CNY', { size:11, gap:18 });
+  drawLine('Balance 借款余额: ' + (total - cashAdvance).toFixed(2) + ' CNY', { bold:true, size:12, gap:24 });
+
+  const remarks = document.getElementById('remarks').value;
+  if (remarks){
+    drawLine('Remarks 备注:', { bold:true, gap:16 });
+    drawLine(remarks, { size:10 });
+  }
+
+  // Append invoice PDFs so the claim and receipts print together
+  for (const item of invoices){
+    try {
+      const arrBuf = await item.file.arrayBuffer();
+      const invDoc = await PDFDocument.load(arrBuf);
+      const pages = await pdfDoc.copyPages(invDoc, invDoc.getPageIndices());
+      pages.forEach(p=>pdfDoc.addPage(p));
+    } catch(e){
+      console.warn('Could not append', item.name, e);
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const blob = new Blob([pdfBytes], { type:'application/pdf' });
+  downloadBlob(blob, 'Expense_Claim_with_invoices.pdf');
+}
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+function resetEverything(){
+  clearDraft();
+  invoices = [];
+  renderInvoices();
+  lineItemsDiv.innerHTML = '';
+  document.getElementById('date').value = todayISO();
+  document.getElementById('department').value = 'G&A';
+  document.getElementById('applicant').value = '';
+  document.getElementById('cashAdvance').value = 0;
+  document.getElementById('paymentType').value = 'Transfer';
+  document.getElementById('expectedDate').value = '';
+  document.getElementById('remarks').value = '';
+  addLineItem(null, {skipSave:true});
+  updateTotal();
+  updateAddButtonState();
+  saveDraft();
+}
+</script>
+
+</body>
+</html>
