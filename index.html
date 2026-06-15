@@ -818,20 +818,28 @@ async function buildCombinedPDF(lines, cashAdvance){
     }
   };
 
+  // pdf-lib's standard fonts only support WinAnsi (Latin) characters.
+  // Strip anything outside that range (e.g. Chinese) and tidy up resulting whitespace.
+  const toAscii = (s) => String(s == null ? '' : s)
+    .replace(/[^\x00-\xFF]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([)\].,:;])/g, '$1')
+    .trim();
+
   const drawLine = (text, opts)=>{
     opts = opts || {};
     ensureSpace(opts.gap || lineHeight);
-    page.drawText(text, { x: left, y, size: opts.size||11, font: opts.bold?fontBold:font, color: rgb(0.12,0.16,0.22) });
+    page.drawText(toAscii(text), { x: left, y, size: opts.size||11, font: opts.bold?fontBold:font, color: rgb(0.12,0.16,0.22) });
     y -= opts.gap || lineHeight;
   };
 
-  drawLine('Approval for Expense Reimbursement 报销费用申请', { size:16, bold:true, gap:28 });
-  drawLine('Date 日期: ' + document.getElementById('date').value);
-  drawLine('Department 部门: ' + document.getElementById('department').value);
-  drawLine('Applicant 申请人: ' + document.getElementById('applicant').value);
-  drawLine('Payment type 付款方式: ' + document.getElementById('paymentType').value + '    Expected payment date 期望付款日期: ' + document.getElementById('expectedDate').value, {gap:28});
+  drawLine('Approval for Expense Reimbursement', { size:16, bold:true, gap:28 });
+  drawLine('Date: ' + document.getElementById('date').value);
+  drawLine('Department: ' + document.getElementById('department').value);
+  drawLine('Applicant: ' + document.getElementById('applicant').value);
+  drawLine('Payment type: ' + document.getElementById('paymentType').value + '    Expected payment date: ' + document.getElementById('expectedDate').value, {gap:28});
 
-  drawLine('Expenses 费用明细:', { bold:true, gap:20 });
+  drawLine('Expenses:', { bold:true, gap:20 });
   let total = 0;
   lines.forEach((l,i)=>{
     const amount = parseFloat(l.amount) || 0;
@@ -841,13 +849,13 @@ async function buildCombinedPDF(lines, cashAdvance){
   });
 
   y -= 6;
-  drawLine('Total 合计: ' + total.toFixed(2) + ' CNY', { bold:true, size:13, gap:20 });
-  drawLine('Cash in advance 借款金额: ' + cashAdvance.toFixed(2) + ' CNY', { size:11, gap:18 });
-  drawLine('Balance 借款余额: ' + (total - cashAdvance).toFixed(2) + ' CNY', { bold:true, size:12, gap:24 });
+  drawLine('Total: ' + total.toFixed(2) + ' CNY', { bold:true, size:13, gap:20 });
+  drawLine('Cash in advance: ' + cashAdvance.toFixed(2) + ' CNY', { size:11, gap:18 });
+  drawLine('Balance: ' + (total - cashAdvance).toFixed(2) + ' CNY', { bold:true, size:12, gap:24 });
 
   const remarks = document.getElementById('remarks').value;
   if (remarks){
-    drawLine('Remarks 备注:', { bold:true, gap:16 });
+    drawLine('Remarks:', { bold:true, gap:16 });
     drawLine(remarks, { size:10 });
   }
 
