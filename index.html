@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://js.live.net/v7.2/OneDrive.js"></script>
 <style>
   :root{
     --ink:#1f2a37;
@@ -252,7 +253,39 @@
   }
   #status.ok{color:var(--ok);}
   #status.err{color:var(--accent);}
-  .confirm-box{
+  .review-panel{
+    margin-top:10px;
+    border:2px solid var(--accent);
+    border-radius:6px;
+    padding:14px;
+    background:var(--accent-soft);
+  }
+  .review-panel h3{
+    margin:0 0 10px;
+    font-size:13px;
+    font-weight:700;
+    color:var(--accent);
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+  }
+  .review-panel .btn-row{
+    display:flex;
+    gap:8px;
+    margin-top:12px;
+  }
+  .review-panel .btn-row button{
+    flex:1;
+    padding:10px;
+    border-radius:4px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    border:none;
+  }
+  .btn-confirm{background:var(--ink); color:#fff;}
+  .btn-confirm:hover{background:#0e1722;}
+  .btn-skip{background:#fff; color:var(--muted); border:1px solid var(--line) !important;}
+  .btn-skip:hover{background:#f3f3f0;}
     border:1px solid var(--accent);
     background:var(--accent-soft);
     border-radius:6px;
@@ -345,10 +378,12 @@
   <div class="card">
     <h2>Invoices / receipts <span class="lang-tag">发票（可选，自动识别）</span></h2>
     <div class="upload-zone" id="dropZone">
-      <strong>Drop invoice PDFs here or click to upload</strong>
-      <div class="hint">Each invoice can auto-add an expense line below (requires API key) and will be printed together with the claim form.</div>
+      <strong>Drop invoice PDFs here or click to upload from device</strong>
+      <div class="hint">Or use the OneDrive button below to pick files from your Expenses/Inbox folder.</div>
       <input type="file" id="fileInput" accept="application/pdf" multiple>
     </div>
+    <button class="addline" id="onedriveBtn" type="button" style="margin-top:10px;">📁 Browse OneDrive Expenses folder</button>
+    <div class="note" style="margin-top:6px;">First time: you'll be asked to sign in to Microsoft. The app only reads files you select — nothing else.</div>
     <div id="invoiceList"></div>
   </div>
 
@@ -574,6 +609,43 @@ dropZone.addEventListener('drop', e=>{
 });
 fileInput.addEventListener('change', e=>handleFiles(e.target.files));
 
+// ---- OneDrive picker ----
+// Your OneDrive Expenses/Inbox folder path
+const ONEDRIVE_FOLDER = '/Expenses/Inbox';
+
+document.getElementById('onedriveBtn').addEventListener('click', ()=>{
+  const odOptions = {
+    clientId: '4b46b698-82d9-4e4a-a9c8-5b5a1e8e9b3c', // Microsoft's public sample app ID for OneDrive picker
+    action: 'download',
+    multiSelect: true,
+    advanced: {
+      filter: '.pdf',
+      queryParameters: 'select=id,name,size,file,@microsoft.graph.downloadUrl',
+      redirectUri: window.location.href.split('?')[0]
+    },
+    success: async (response) => {
+      setStatus('Loading files from OneDrive...', '');
+      for (const odFile of response.value) {
+        try {
+          const dlUrl = odFile['@microsoft.graph.downloadUrl'];
+          const res = await fetch(dlUrl);
+          const blob = await res.blob();
+          const file = new File([blob], odFile.name, { type: 'application/pdf' });
+          const item = { file, name: odFile.name, status: 'pending', id: crypto.randomUUID() };
+          invoices.push(item);
+          renderInvoices();
+          processInvoice(item);
+        } catch(e) {
+          setStatus('Could not load ' + odFile.name + ': ' + e.message, 'err');
+        }
+      }
+    },
+    cancel: () => {},
+    error: (e) => setStatus('OneDrive error: ' + e.message, 'err')
+  };
+  OneDrive.open(odOptions);
+});
+
 function handleFiles(files){
   for (const file of files){
     if (file.type !== 'application/pdf') continue;
@@ -589,37 +661,102 @@ function renderInvoices(){
   invoices.forEach(item=>{
     const div = document.createElement('div');
     div.className = 'invoice-item';
+    div.dataset.id = item.id;
+
+    let extraHtml = '';
+    if (item.status === 'reading'){
+      extraHtml = `<div style="font-size:12px;color:var(--muted);margin-top:6px;">Reading invoice with Claude...</div>`;
+    } else if (item.status === 'review'){
+      const ex = item.extracted || {};
+      extraHtml = `
+        <div class="review-panel">
+          <h3>Review &amp; confirm expense</h3>
+          <div class="field">
+            <label>Description</label>
+            <input type="text" class="rv-desc" value="${escapeAttr(ex.description||'')}">
+          </div>
+          <div class="field">
+            <label>Expense Type</label>
+            <select class="rv-type">
+              ${EXPENSE_TYPES.map(t=>`<option value="${escapeAttr(t)}" ${(EXPENSE_TYPES.includes(ex.expense_type)&&ex.expense_type===t)?'selected':''}>${t}</option>`).join('')}
+            </select>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Usage</label>
+              <input type="text" class="rv-usage" value="${escapeAttr(ex.usage||'')}">
+            </div>
+            <div class="field">
+              <label>Amount (CNY)</label>
+              <input type="number" step="0.01" class="rv-amount" value="${ex.amount||''}">
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn-confirm" type="button">Add expense</button>
+            <button class="btn-skip" type="button">Attach PDF only (no expense line)</button>
+          </div>
+        </div>`;
+    } else if (item.status === 'added'){
+      extraHtml = `<div style="font-size:12px;color:var(--ok);margin-top:4px;">✓ Expense added — PDF will be included in report</div>`;
+    } else if (item.status === 'attached'){
+      extraHtml = `<div style="font-size:12px;color:var(--muted);margin-top:4px;">PDF attached (no expense line)</div>`;
+    } else if (item.status === 'error'){
+      extraHtml = `<div style="font-size:12px;color:var(--accent);margin-top:4px;">${escapeAttr(item.errorMsg||'Error reading invoice')}</div>`;
+    }
+
     div.innerHTML = `
-      <span>${item.name}</span>
-      <span>
-        <span class="status ${item.status}">${item.status}</span>
-        <button class="remove" type="button" data-id="${item.id}">remove</button>
-      </span>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;font-weight:600;">${item.name}</span>
+        <button class="remove" type="button" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;text-decoration:underline;">remove</button>
+      </div>
+      ${extraHtml}
     `;
+
     div.querySelector('.remove').addEventListener('click', ()=>{
       invoices = invoices.filter(i=>i.id!==item.id);
       renderInvoices();
     });
-    invoiceList.appendChild(div);
-  });
-}
 
-async function fileToBase64(file){
-  return new Promise((resolve,reject)=>{
-    const r = new FileReader();
-    r.onload = ()=>resolve(r.result.split(',')[1]);
-    r.onerror = reject;
-    r.readAsDataURL(file);
+    if (item.status === 'review'){
+      div.querySelector('.btn-confirm').addEventListener('click', ()=>{
+        const prefill = {
+          desc: div.querySelector('.rv-desc').value,
+          type: div.querySelector('.rv-type').value,
+          usage: div.querySelector('.rv-usage').value,
+          amount: div.querySelector('.rv-amount').value
+        };
+        addLineItem(prefill);
+        // fill expected date if not set
+        const expDateInput = document.getElementById('expectedDate');
+        if (!expDateInput.value && item.extracted && item.extracted.date){
+          expDateInput.value = item.extracted.date;
+          saveDraft();
+        }
+        item.status = 'added';
+        renderInvoices();
+        setStatus('Expense added from ' + item.name, 'ok');
+      });
+      div.querySelector('.btn-skip').addEventListener('click', ()=>{
+        item.status = 'attached';
+        renderInvoices();
+      });
+    }
+
+    invoiceList.appendChild(div);
   });
 }
 
 async function processInvoice(item){
   const apiKey = localStorage.getItem('claudeApiKey') || apiKeyInput.value.trim();
   if (!apiKey){
-    item.status = 'pending';
+    // No API key — show blank review panel for manual entry
+    item.status = 'review';
+    item.extracted = {};
     renderInvoices();
     return;
   }
+  item.status = 'reading';
+  renderInvoices();
   try {
     const base64 = await fileToBase64(item.file);
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -639,11 +776,11 @@ async function processInvoice(item){
             { type:'document', source:{ type:'base64', media_type:'application/pdf', data: base64 } },
             { type:'text', text:`This is a Chinese invoice (发票) or receipt. Extract the following fields and respond ONLY with raw JSON (no markdown, no preamble):
 {
-  "description": "a short English description of what was purchased, based on the 项目名称 line items or receipt content",
+  "description": "a short English description of what was purchased, based on the line items or receipt content",
   "expense_type": "best match from this list, exact text: ${JSON.stringify(EXPENSE_TYPES)}",
-  "usage": "brief note on where/when/with whom or destination/traffic type, per the expense type's guidance, in English",
-  "amount": <the total amount (价税合计, small-figure) as a plain number, no currency symbol>,
-  "date": "the invoice/receipt date (开票日期) as YYYY-MM-DD"
+  "usage": "brief note on where/when/with whom or destination/traffic type, in English",
+  "amount": <the total amount as a plain number, no currency symbol>,
+  "date": "the invoice/receipt date as YYYY-MM-DD"
 }` }
           ]
         }]
@@ -663,26 +800,15 @@ async function processInvoice(item){
       throw new Error('Could not parse model response');
     }
     item.extracted = parsed;
-    item.status = 'done';
+    item.status = 'review';
     renderInvoices();
-
-    addLineItem({
-      desc: parsed.description || '',
-      type: EXPENSE_TYPES.includes(parsed.expense_type) ? parsed.expense_type : EXPENSE_TYPES[0],
-      usage: parsed.usage || '',
-      amount: parsed.amount || ''
-    });
-    // fill form-level expected date if not already set
-    const expDateInput = document.getElementById('expectedDate');
-    if (!expDateInput.value && parsed.date){
-      expDateInput.value = parsed.date;
-      saveDraft();
-    }
-    setStatus(`Added expense from ${item.name}`, 'ok');
+    setStatus('Invoice read — review and confirm below.', 'ok');
   } catch (err){
-    item.status = 'error';
+    item.status = 'review';
+    item.extracted = {};
+    item.errorMsg = err.message;
     renderInvoices();
-    setStatus(`Failed to read ${item.name}: ${err.message}`, 'err');
+    setStatus('Could not auto-read invoice (' + err.message + ') — fill in manually below.', 'err');
   }
 }
 
